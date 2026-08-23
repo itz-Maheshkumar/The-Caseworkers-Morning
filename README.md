@@ -6,45 +6,34 @@ stops to get supervisor approval before touching anything the authority
 policy reserves for a human.
 
 Built for the "Agentic AI / Guardrails" problem: **Problem 5 — The
-Caseworker's Morning**. Full brief in `docs/` (not committed — see the
-original problem pack) — the short version: chaining three steps together
-isn't the hard part. Knowing which of those steps the agent isn't allowed
-to take alone, and *proving* the boundary is enforced rather than just
-requested, is the hard part.
+Caseworker's Morning** (Brite Spark 2026). The full brief and the
+authority policy it's built against are not committed to this repo — see
+the original problem pack. The short version: chaining three steps
+together isn't the hard part. Knowing which of those steps the agent
+isn't allowed to take alone, and *proving* the boundary is enforced
+rather than just requested, is the hard part.
 
 ## Status
 
-All 15 modules built and tested — the original 9 plus Modules 10-15
-implementing Amendment ACA-2026/2 (Day 2's surprise policy change). The
-floor is met end to end (`run` → `list-pending` → `approve`, against the
-real mock API and the real 12-referral queue) and so is the amendment:
-`run` now also produces `list-handoffs`, gated by clause 3.9 rather than
-by approval, and correctly hands off exactly the three affected referrals
-(RF-2026-0412, 0416, 0418) instead of drafting for them. All of this is
-locked in by 24 automated tests (14 original + 10 for the amendment) and
-documented in DECISIONS.md / AI-USAGE.md, including the two open
-interpretation calls the amendment itself doesn't settle (see
-DECISIONS.md's amendment section). Built and committed one module per
-feature branch and PR (`feat-policy-as-data`, `feat-history-client`,
-`feat-policy-engine`, `feat-trace`, `feat-approval-gate`,
-`feat-triage-escalation-drafting`, `feat-orchestrator-cli`,
-`test-specs-tests-files`, and now `feat-new-policy-rules` for the
-amendment), each merged into `main` as its module landed. Still
-outstanding before submission: filling in `AI-USAGE.md` (currently still
-the blank template — tools used, what was AI-assisted vs. written by
-hand, and the unmodified-problem-pack confirmations), and your own
-read-through of everything before it ships, especially AI-USAGE.md's
-characterisation of the process and DECISIONS.md's reasoning, since both
-are yours to stand behind.
+The floor is met end to end (`run` → `list-pending` → `approve`, against
+the real mock API and the real 12-referral queue), and so is Amendment
+ACA-2026/2, the Day 2 policy change (`run` now also produces
+`list-handoffs`; see below). All of it is locked in by 24 automated
+tests and documented in DECISIONS.md / AI-USAGE.md. Still outstanding
+before submission: filling in `AI-USAGE.md` (currently still the blank
+template — tools used, what was AI-assisted vs. written by hand, and the
+unmodified-problem-pack confirmations), and your own read-through of
+everything before it ships, especially AI-USAGE.md's characterisation of
+the process and DECISIONS.md's reasoning, since both are yours to stand
+behind.
 
 ## The floor (what "done" means)
 
 - [x] A three-step agent run that completes for every referral it's
-      permitted to handle. — `run` processes all 12 referrals. Originally
-      (Module 9): 8 drafted, 4 escalated. As of Amendment ACA-2026/2
-      (Module 13): 5 drafted, 4 escalated, 3 handed off — the 3 that move
-      from "drafted" to "handed off" are exactly the ones with a minor in
-      the household (clause 3.9); the 4 escalations are unaffected.
+      permitted to handle. — `run` processes all 12 referrals: 5
+      drafted, 4 escalated, 3 handed off under Amendment ACA-2026/2 (the
+      3 that move from "drafted" to "handed off" are exactly the ones
+      with a minor in the household — see clause 3.9 below).
 - [x] A visible execution trace — a supervisor can reconstruct, after the
       fact, what was done, in what order, on what basis, and what was
       declined. — `output/trace.jsonl`, one JSON object per step.
@@ -62,265 +51,86 @@ are yours to stand behind.
       copying the repo to a clean directory and running `run` /
       `list-pending` / `approve` against it directly.
 
-## Design principles carried through every module
+## Design principles
 
 1. **Policy is data, not code.** The authority boundary (policy
-   ACA-2026/1) lives in `data/policy_rules.json`. No module should contain
+   ACA-2026/1) lives in `data/policy_rules.json`. No module contains
    hard-coded policy text — only logic for *applying* whatever the data
    file says. This is the direct answer to the brief's warning that
-   requirements change on "day two" without notice: a policy change should
-   be a data edit, not a code change.
+   requirements change on "day two" without notice: a policy change is a
+   data edit, not a code change.
 2. **The mutating capability shouldn't exist, not just be forbidden.**
    `services/history_service.py` only exposes `GET` routes. As long as
    nothing in `agent/` adds a way to write back to a resident's record,
    the agent is structurally incapable of the Section 3 actions — that's
    a stronger guarantee than "the agent was told not to."
-3. **A drafted note or an escalation is the only output.** Neither
-   mutates anything. A triage note is a proposal until a caseworker
-   adopts it; an escalation is a request for a supervisor to look, not an
-   attempt to act.
+3. **A drafted note, an escalation, or a hand-off is the only output.**
+   None of the three mutates anything. A triage note is a proposal until
+   a caseworker adopts it; an escalation is a request for a supervisor to
+   look, not an attempt to act; a hand-off produces nothing to adopt at
+   all.
 
 ## Project structure
 
 ```
 The-Caseworkers-Morning/
 ├── README.md                       — this file
-├── DECISIONS.md                    — fill in as modules land
-├── AI-USAGE.md                     — fill in as modules land
+├── DECISIONS.md                    — reasoning behind the design
+├── AI-USAGE.md                     — AI-usage attestation
 ├── data/
 │   ├── referral-queue.json         — given: 12 overnight referrals
 │   ├── authority-policy.md         — given: policy ACA-2026/1 (human-readable)
-│   └── policy_rules.json           — MODULE 1: same policy, as structured data
+│   └── policy_rules.json           — the policy, as structured data
 ├── services/
 │   ├── history_service.py          — given: mock Resident History API
 │   └── _history_data.json          — given: the data it serves
 ├── agent/
-│   ├── history_client.py           — MODULE 2: client for the history API
-│   ├── policy_engine.py            — MODULE 3 + 11: classify() -> autonomous | requires_approval;
-│   │                                   check_household_restriction() -> clear | handoff_required (Amendment)
-│   ├── trace.py                    — MODULE 4: execution trace (policy 5.1/5.2)
-│   ├── approval_gate.py            — MODULE 5: the hard approval gate
-│   ├── dates.py                    — MODULE 10/11: shared age_years() helper (Amendment)
-│   ├── triage.py                   — MODULE 6 + 12: draft notes, escalation records, hand-off records
-│   └── run_agent.py                — MODULE 7 + 13: CLI / orchestrator, three-way branch
+│   ├── history_client.py           — client for the history API
+│   ├── policy_engine.py            — classify() -> autonomous | requires_approval;
+│   │                                   check_household_restriction() -> clear | handoff_required
+│   ├── trace.py                    — execution trace (policy 5.1/5.2)
+│   ├── approval_gate.py            — the hard approval gate
+│   ├── dates.py                    — shared age_years() helper
+│   ├── triage.py                   — draft notes, escalation records, hand-off records
+│   └── run_agent.py                — CLI / orchestrator
 ├── tests/
-│   └── test_policy_engine.py       — MODULE 8 + 14: verification (24 tests)
+│   └── test_policy_engine.py       — 24 tests
 ├── approvals/                      — approvals.json lands here at runtime
 └── output/
     ├── trace.jsonl                 — generated at runtime
     ├── triage_notes/                — generated at runtime
     ├── escalations/                 — generated at runtime
-    └── handoffs/                    — MODULE 12: generated at runtime (Amendment)
+    └── handoffs/                    — generated at runtime
 ```
 
-Files marked "given" are the unmodified problem pack — data and fixtures,
-not something to edit. Everything under `agent/` and `tests/` is fully
-built and tested (Modules 1-15); each file's docstring still doubles as
-its contract (inputs, outputs, which policy clause it's responsible for).
+Files marked "given" are the unmodified problem pack — data and
+fixtures, not something to edit. Each file under `agent/` has a
+docstring doubling as its contract (inputs, outputs, which policy clause
+it's responsible for).
 
-## Development plan — module by module
+## Amendment ACA-2026/2 (Day 2)
 
-Build in this order; each module is usable/testable on its own before the
-next one needs it.
+A policy amendment landed after the original brief: drafting a triage
+note is no longer permitted at all for a referral concerning a household
+that includes anyone under 18 (clause 3.9) — not "don't adopt it," "don't
+produce it in the first place." The agent hands those referrals to a
+caseworker instead: `agent/triage.write_handoff()` writes a record to
+`output/handoffs/`, distinct from `output/escalations/`, because a
+hand-off is ordinary casework a person must do, not a decision the
+Department must authorise. `list-handoffs` shows them. A resident whose
+history couldn't be fetched at all is treated as household composition
+unknown, and therefore also handed off rather than drafted or silently
+dropped.
 
-**Module 1 — Policy as data** (`data/policy_rules.json`)
-Encode `data/authority-policy.md` as structured rules: which actions are
-autonomous (Section 2), which need approval (Section 3, with trigger
-phrases per action), and the fail-safe default for anything unclear
-(Section 6.1). Done when: the file fully represents the policy and nothing
-else needs to read the `.md` file at runtime.
-
-**Module 2 — History client** (`agent/history_client.py`)
-Thin wrapper around the mock API's `GET` endpoints. Done when: it can
-fetch a full resident record, household, and events, standard library
-only, with `services/history_service.py` running locally.
-
-**Module 3 — Policy engine** (`agent/policy_engine.py`)
-Classify a referral against `policy_rules.json`, checking *both*
-`requested_action` and `summary` (not just the label a referral was given).
-Done when: run against all 12 referrals in `data/referral-queue.json` and
-manually check each classification against the policy — including the one
-where the requested action *sounds* fine but the summary isn't.
-
-**Module 4 — Trace** (`agent/trace.py`)
-Structured, timestamped log of every step. Done when: a person who wasn't
-in the room can read `output/trace.jsonl` and reconstruct the whole run.
-
-**Module 5 — Approval gate** (`agent/approval_gate.py`)
-The hard gate: a restricted action cannot proceed without a prior,
-human-written approval record. Done when: you can demonstrate the negative
-— call the gated function on something unapproved and watch it refuse.
-
-**Module 6 — Triage & escalation drafting** (`agent/triage.py`)
-Turn a classified referral + resident record into either a triage note
-(autonomous) or an escalation record with enough context for a supervisor
-to act without re-reading the case (Section 4.2). Done when: both output
-types read like something a real caseworker/supervisor could use as-is.
-
-**Module 7 — Orchestrator / CLI** (`agent/run_agent.py`)
-Wire Modules 1-6 into `run`, `list-pending`, and `approve` commands. One
-referral escalating or failing must never stop the rest of the queue.
-Done when: a clean clone + this README is enough for someone else to run
-the whole thing.
-
-**Module 8 — Tests** (`tests/`)
-Lock in the classification behaviour and the gate's refusal behaviour
-before touching anything else — cheap insurance against the "day two"
-requirement change breaking something silently.
-
-**Module 9 — Docs** (`DECISIONS.md`, `AI-USAGE.md`)
-Not a separate coding module, but don't leave it to the end — fill in each
-file's relevant section as the module it describes gets built, while the
-reasoning is still fresh.
-
-## Amendment ACA-2026/2 — implementation plan (Day 2)
-
-The day-two change landed: **Amendment ACA-2026/2** inserts a new clause,
-**3.9**, into the authority policy — drafting a triage note is no longer
-permitted *at all* for a referral concerning a household that includes
-anyone under 18. Not "don't adopt it" — "don't produce the draft in the
-first place." What happens instead is a **hand-off**, which the amendment
-is explicit must be distinguishable from an escalation: an escalation
-means "the Department must decide whether this may happen at all"; a
-hand-off means "this is ordinary casework a person must do."
-
-Checked against the real queue: **RF-2026-0412, RF-2026-0416, and
-RF-2026-0418** each have a minor in the household (ages 5, 3, and 12 & 0 respectively)
-and currently get drafted as autonomous. Those three need to stop being
-drafted and start being handed off instead. None of the 4 already-escalated
-referrals (0415/0419/0422/0423) have a minor in the household, so in this
-batch the two rule systems don't overlap — but the design still has to
-decide what *would* happen if they did (see "Open interpretation calls"
-below).
-
-This is a genuinely different kind of rule from Sections 3.1–3.8: those
-are evaluated from the referral's own text (`requested_action` + `summary`);
-3.9 is evaluated from the resident's household composition — data the
-current `policy_engine.classify()` never looks at. That's the real test of
-whether "policy is data, not code" holds up, or whether it turns out to
-have been implicitly scoped to text-matching only.
-
-**Module 10 — Encode 3.9 as data** (`data/policy_rules.json`)
-Add a new top-level section, separate from `restricted_actions`, since
-this is evaluated against resident data, not referral text — e.g.
-`household_restrictions: [{id: "3.9", age_threshold_years: 18,
-on_composition_unknown: "treat_as_applying"}]`, the last field encoding
-amendment 5.2's fail-safe (household composition unknown → treat 3.9 as
-applying) the same way `default_when_unclear` already encodes 6.1's.
-Done when: nothing about age 18, or what to do when composition is
-unknown, exists anywhere outside this file. **Done** — `household_restrictions`
-is the only place `18` or `on_composition_unknown` appears in `data/`.
-
-**Module 11 — Household-composition check** (`agent/policy_engine.py`)
-A new function — not a change to `classify()`'s existing signature, to
-avoid disturbing Module 3's contract and its passing tests — that takes a
-resident record (or `None`, if history couldn't be fetched) and returns
-whether 3.9 applies, reusing the `Decision`-style shape (status,
-matched rule `3.9`, reason naming which household member triggered it)
-so downstream code doesn't need a second decision shape to handle. Done
-when: it correctly flags all three known cases (0412, 0416, 0418), leaves
-the other 9 unflagged, and returns "applies" (not "unknown") when handed
-`None`. **Done** — all three confirmed individually and via a full-queue
-test (`test_full_queue_household_restriction_matches_known_three`);
-`classify()`'s 14 pre-existing tests still pass unchanged.
-
-**Module 12 — The hand-off output type** (`agent/triage.py`)
-A third function, `write_handoff()`, alongside the existing
-`draft_triage_note()` / `write_escalation()`. No note text is generated —
-none is allowed to exist per 2.2. The record carries whatever was already
-established (referral fields, resident/household context if fetched) so
-the caseworker doesn't repeat work (3.2/4.2), with a status string
-(e.g. `HANDED_OFF_TO_CASEWORKER`) distinct from escalation's
-`AWAITING_SUPERVISOR_APPROVAL`, written to a **separate directory**
-(`output/handoffs/`) rather than reusing `output/escalations/` — physical
-separation is the simplest way to make "distinguishable from an
-escalation" (3.3) not rely on someone reading a status field carefully.
-**Done** — `write_handoff()` shares `_resident_context()` with
-`write_escalation()` but writes `record_type: "hand_off"` /
-`status: "HANDED_OFF_TO_CASEWORKER"` to its own directory; no note text
-is generated anywhere in the function.
-
-**Module 13 — Orchestrator: three-way branch + the fetch-failure fail-safe**
-(`agent/run_agent.py`)
-Per referral, the order becomes: fetch history → run the existing text
-classifier regardless of whether the fetch succeeded (it doesn't need
-resident data) → then:
-- `requires_approval` → escalate, as today (unaffected by 3.9 — an
-  escalation already means no note gets drafted, so 3.9 is moot here);
-- `autonomous` **and** history fetch failed → hand off, citing 5.2
-  (composition unknown → treat 3.9 as applying) — this is a real behavior
-  change: today a fetch failure just gets logged and nothing is produced;
-  after this amendment it must produce a hand-off, because "no output at
-  all" isn't the same as "handed to the caseworker with what's known" (4.2
-  requires the latter);
-- `autonomous` **and** a minor is in the household → hand off, citing 3.9;
-- `autonomous` and neither → draft the note, as today.
-
-Also needs: a new trace event type for the hand-off decision, updated run
-summary counts (autonomous / escalated / handed off / failed), and a
-`list-handoffs` CLI command as a sibling to `list-pending` — kept separate
-rather than folded into one listing, again for 3.3's distinguishability.
-Done when: `run` against the real queue produces exactly 3 hand-offs (plus
-the existing 4 escalations and 5 remaining autonomous drafts), and a
-synthetic fetch failure on an otherwise-autonomous referral produces a
-hand-off instead of silently disappearing. **Done** — live run against the
-real queue: 5 autonomous / 4 escalated / 3 handed off, exactly RF-2026-0412/
-0416/0418. A run pointed at an unreachable history URL turns all 12
-referrals into 4 escalated + 8 handed off + 0 autonomous — 0 silently
-dropped, matching clause 5.2. `list-handoffs` lists all three by referral
-ID, matched rule, and reason.
-
-**Module 14 — Tests for the amendment** (`tests/`)
-Cover: each of the three known 3.9 cases produces a hand-off and *no*
-triage-note file; the 4 existing escalations are unaffected; a fetch
-failure on an otherwise-autonomous referral produces a hand-off citing 5.2
-rather than just incrementing a `failed` counter; a hand-off record and an
-escalation record are structurally distinguishable (different `status`
-value, different directory) by assertion, not just by inspection.
-**Done** — 10 new tests in `tests/test_policy_engine.py` (24 total, all
-passing), covering the three known cases, a clear case, `resident=None`
-and missing/empty household fail-safes, the full-queue split, handoff/
-escalation field- and directory-level distinguishability, and an
-integration test asserting zero `.txt` files exist for the three affected
-referrals. Verified not vacuous: deliberately broke
-`check_household_restriction()` and confirmed 4 tests failed before
-reverting.
-
-**Module 15 — The required `DECISIONS.md` entry**
-The amendment's own `READ ME FIRST` asks for this explicitly: what
-changed, what was deliberately left alone, and what would have been done
-differently with foreknowledge (the honest answer is probably that
-`classify()` would have taken the resident record from the start, rather
-than Module 11 needing to exist as a bolted-on second decision path).
-Also where the "open interpretation calls" below get written down as
-decisions, not left implicit. **Done** — see the "Amendment ACA-2026/2 —
-what changed, what didn't, and what I'd do differently" section of
-`DECISIONS.md`.
-
-### Open interpretation calls (worth deciding deliberately, not by accident)
-
-**The overlap case.** No referral in the current queue is both
-Section-3-restricted *and* has a minor in the household, but the design
-still has to pick a behavior for if one existed. Recommendation: escalation
-takes priority and no separate hand-off is produced — an escalation
-already means no note gets drafted, which is all 3.9 actually requires,
-so a redundant hand-off would just be noise. Worth optionally noting
-"household includes a minor" as extra context inside the escalation
-record rather than acting on it separately. This is exactly the kind of
-question the amendment's cover note says is fair to ask the organizers
-about, if there's any doubt about it.
-
-**Age reference date.** `triage.py` already computes age relative to the
-referral batch date (`2026-03-17`), not "whenever the code happens to
-run." Recommendation: reuse that same convention for 3.9 so an age
-computed for the same person doesn't disagree between two different
-places in the codebase — but it's an assumption, not something the
-amendment states outright, and worth a line in DECISIONS.md either way.
+See `DECISIONS.md` for what changed, what was deliberately left alone,
+and the two interpretation calls the amendment doesn't settle outright
+(what happens when a referral is both Section-3-restricted and has a
+minor in the household; which reference date "age" is computed against).
 
 ## Environment setup
 
 A `.venv` keeps anything installed for this project separate from your
-system Python — do this once, before Module 1:
+system Python:
 
 ```powershell
 # from the repo root, in PowerShell
@@ -335,14 +145,12 @@ python -m venv .venv
 ```
 
 Your prompt should then show `(.venv)`. `.venv/` is git-ignored, so it
-never gets committed. Right now the project needs nothing beyond the
-standard library, so there's nothing to `pip install` yet — but as
-modules bring in real dependencies, install them with the venv active and
-run `pip freeze > requirements.txt` to lock them, so a clean clone can
-recreate the same environment with `pip install -r requirements.txt`.
-Deactivate anytime with `deactivate`.
+never gets committed. The project needs nothing beyond the standard
+library, so there's nothing to `pip install` — `requirements.txt` is
+present but empty, ready for `pip freeze` if that ever changes. Deactivate
+anytime with `deactivate`.
 
-## Running it (once built)
+## Running it
 
 Make sure the `.venv` is active first (see above).
 
@@ -357,7 +165,7 @@ python3 agent/run_agent.py list-handoffs
 python3 agent/run_agent.py approve <referral_id> --by "<name>"
 ```
 
-Python 3, standard library only for now — no dependencies to install yet.
+Python 3, standard library only — no dependencies to install.
 
 ## Running the tests
 
@@ -365,6 +173,6 @@ Python 3, standard library only for now — no dependencies to install yet.
 python3 -m unittest discover -s tests -v
 ```
 
-No mock service needed — the tests exercise `policy_engine.py` and
-`approval_gate.py` directly against the real `data/` files, not against a
-running server.
+No mock service needed — the tests exercise `policy_engine.py`,
+`approval_gate.py`, and `triage.py` directly against the real `data/`
+files, not against a running server.
