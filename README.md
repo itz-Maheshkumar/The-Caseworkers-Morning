@@ -163,6 +163,9 @@ python3 agent/run_agent.py run
 python3 agent/run_agent.py list-pending
 python3 agent/run_agent.py list-handoffs
 python3 agent/run_agent.py approve <referral_id> --by "<name>"
+python3 agent/run_agent.py list-pending
+cat output/trace.jsonl                      
+python3 -m unittest discover -s tests -v 
 ```
 
 Python 3, standard library only — no dependencies to install.
