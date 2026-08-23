@@ -1,3 +1,78 @@
 {
-  "_todo": "MODULE 1 — Policy-as-data. Encode authority-policy.md (ACA-2026/1) here as structured rules that policy_engine.py can load and apply. Nothing about the policy's content should live in Python — only how to apply whatever is in this file. Suggested shape: policy_ref, default_when_unclear (see policy 6.1), autonomous_actions (Section 2, ids 2.1-2.7), restricted_actions (Section 3, ids 3.1-3.8, each with a description and a list of trigger phrases to match against a referral's requested_action + summary), and a recognised_safe_actions list. See data/authority-policy.md for the source text."
+  "policy_ref": "ACA-2026/1",
+  "source_document": "authority-policy.md",
+  "note": "Machine-readable encoding of the authority policy. The agent (agent/policy_engine.py) reads THIS to decide what it may do on its own. If the policy changes, this file changes — the agent's classification code does not.",
+
+  "default_when_unclear": "requires_approval",
+  "default_reason": "Policy 6.1: where it is unclear whether an action falls within section 3, it is to be treated as though it does.",
+
+  "autonomous_actions": [
+    {"id": "2.1", "action": "read_referral",        "description": "Read a referral from the overnight queue."},
+    {"id": "2.2", "action": "retrieve_history",      "description": "Retrieve a resident's history, household composition, and case events."},
+    {"id": "2.3", "action": "categorise_referral",   "description": "Categorise or prioritise a referral."},
+    {"id": "2.4", "action": "draft_triage_note",     "description": "Draft a triage note for caseworker review. Has no effect on the case until adopted."},
+    {"id": "2.5", "action": "record_triaged",        "description": "Record that a referral has been read and triaged."},
+    {"id": "2.6", "action": "flag_for_attention",    "description": "Flag a referral for human attention, including as urgent."},
+    {"id": "2.7", "action": "escalate",              "description": "Identify an out-of-authority action and escalate it under section 4."}
+  ],
+
+  "restricted_actions": [
+    {
+      "id": "3.1",
+      "label": "entitlement_or_eligibility_change",
+      "description": "Any change to a resident's entitlement, award amount, or eligibility status.",
+      "triggers": ["change award", "recalculate award", "adjust award", "change entitlement",
+                   "eligibility change", "change eligibility", "income change", "record income change"]
+    },
+    {
+      "id": "3.2",
+      "label": "award_status_change",
+      "description": "Suspension, termination, or reinstatement of an award.",
+      "triggers": ["suspend", "suspension", "terminate", "termination", "reinstate", "reinstatement", "reinstated"]
+    },
+    {
+      "id": "3.3",
+      "label": "payment_initiation_or_cancellation",
+      "description": "Initiation, alteration, or cancellation of a payment.",
+      "triggers": ["initiate payment", "cancel payment", "stop payment", "alter payment", "halt payment"]
+    },
+    {
+      "id": "3.4",
+      "label": "payment_details_change",
+      "description": "Any change to payment details, including bank or card details.",
+      "triggers": ["payment details", "bank details", "card details", "update payment",
+                   "change payment method", "account into which payment is made", "change bank account"]
+    },
+    {
+      "id": "3.5",
+      "label": "resident_or_third_party_communication",
+      "description": "Any communication sent to a resident or to a third party.",
+      "triggers": ["send letter", "notify resident", "email resident", "call resident to inform",
+                   "send explanatory note", "contact resident directly", "send notice"]
+    },
+    {
+      "id": "3.6",
+      "label": "external_disclosure",
+      "description": "Disclosure of resident information to any party outside the Department.",
+      "triggers": ["disclose", "share with", "external party", "outside the department", "release information"]
+    },
+    {
+      "id": "3.7",
+      "label": "conduct_finding",
+      "description": "Creation of a record asserting a finding of fact about a resident's conduct (incl. suspected fraud).",
+      "triggers": ["fraud finding", "confirm fraud", "record misrepresentation", "finding of fact", "substantiate fraud"]
+    },
+    {
+      "id": "3.8",
+      "label": "irreversible_action",
+      "description": "Any action which, once taken, cannot be reversed by the Department acting alone.",
+      "triggers": []
+    }
+  ],
+
+  "recognised_safe_actions": [
+    "review award", "review household composition", "record change of address",
+    "draft explanatory note", "draft triage note", "flag for contact attempt",
+    "record change", "review", "flag"
+  ]
 }
