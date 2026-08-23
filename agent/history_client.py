@@ -1,39 +1,55 @@
 """
-MODULE 2 — History client.
+History client.
 
-A thin client for the mock Resident History API in services/history_service.py.
-That service exposes GET-only routes — deliberately: there is no
-create/update/delete endpoint anywhere in it. Keep it that way in mind while
-building this client; it's the first, structural layer of the authority
-guardrail (nothing in this codebase can be given a way to mutate a
-resident's record, because nothing it talks to accepts a mutation).
+A thin client for the mock Resident History API (services/history_service.py).
 
-Run the service first:
-    python3 services/history_service.py --port 8083
-
-Endpoints to wrap:
-    GET /residents/<ref>            -> full record (status, benefit_code,
-                                        district, award_monthly, household, events)
-    GET /residents/<ref>/household  -> household composition only
-    GET /residents/<ref>/events     -> case events only
-    GET /health                     -> {"status": "ok", "records": <n>}
-
-Contract for this module:
-
-    class HistoryClient:
-        def __init__(self, base_url="http://127.0.0.1:8083"): ...
-        def get_resident(self, resident_ref: str) -> dict: ...
-        def get_household(self, resident_ref: str) -> dict: ...
-        def get_events(self, resident_ref: str) -> dict: ...
-        def health(self) -> dict: ...
-
-Notes:
-- Use the standard library only (urllib.request) — matches the mock
-  service's own "Python 3 standard library only" constraint from README.md.
-- A 404 from the service comes back as a JSON body like
-  {"error": "not_found", "resident_ref": "..."} with an HTTP error status —
-  decide here whether callers see the raised HTTPError or a parsed dict;
-  policy_engine.py / run_agent.py should not need to know the difference.
+Note what this client CANNOT do: the service only exposes GET endpoints.
+There is no create/update/delete route anywhere in history_service.py.
+That means no code path in this whole project -- however it is instructed --
+is physically capable of writing to a resident's record. The approval gate
+in approval_gate.py (Module 5) is a second, belt-and-braces control on top
+of that, but this is the first one: the mutating capability simply doesn't
+exist in the environment. See DECISIONS.md.
 """
+import json
+import urllib.request
+import urllib.error
 
-# TODO: implement HistoryClient
+
+class HistoryClient:
+    def __init__(self, base_url="http://127.0.0.1:8083"):
+        self.base_url = base_url.rstrip("/")
+
+    def _get(self, path):
+        """
+        GET-only, deliberately. There is no _post/_put/_delete here and
+        there should never be one -- see the module docstring.
+        """
+        url = f"{self.base_url}{path}"
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # The service returns a JSON error body (e.g. {"error": "not_found", ...})
+            # even on 404s. Surface that body as a normal dict rather than
+            # forcing every caller to catch HTTPError -- policy_engine.py
+            # and run_agent.py only need to check for an "error" key.
+            return json.loads(e.read().decode("utf-8"))
+        except urllib.error.URLError as e:
+            return {"error": "unreachable", "detail": str(e.reason)}
+
+    def get_resident(self, resident_ref):
+        """Full record: status, benefit_code, district, award_monthly, household, events."""
+        return self._get(f"/residents/{resident_ref}")
+
+    def get_household(self, resident_ref):
+        """{'resident_ref': ..., 'household': [...]}"""
+        return self._get(f"/residents/{resident_ref}/household")
+
+    def get_events(self, resident_ref):
+        """{'resident_ref': ..., 'events': [...]}"""
+        return self._get(f"/residents/{resident_ref}/events")
+
+    def health(self):
+        """{'status': 'ok', 'service': 'resident-history', 'records': <n>}"""
+        return self._get("/health")
