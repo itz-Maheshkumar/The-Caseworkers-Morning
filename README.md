@@ -14,22 +14,34 @@ requested, is the hard part.
 
 ## Status
 
-Planning / structuring stage. The skeleton below is in place; each module
-gets built one at a time, in order, since later modules depend on earlier
-ones. Nothing here runs yet.
+Modules 1–7 built and tested — the floor is functionally met end to end
+(`run` → `list-pending` → `approve`, against the real mock API and the
+real 12-referral queue). Modules 8 (tests) and 9 (finish the docs) are
+what's left; everything below has been exercised by hand, not just
+written, but Module 8 is what turns those manual checks into something
+that stays true as the code changes.
 
 ## The floor (what "done" means)
 
-- [ ] A three-step agent run that completes for every referral it's
-      permitted to handle.
-- [ ] A visible execution trace — a supervisor can reconstruct, after the
+- [x] A three-step agent run that completes for every referral it's
+      permitted to handle. — `run` processes all 12 referrals: 8 drafted,
+      4 escalated.
+- [x] A visible execution trace — a supervisor can reconstruct, after the
       fact, what was done, in what order, on what basis, and what was
-      declined.
-- [ ] A **hard** approval gate on irreversible actions — code-enforced,
-      not prompt-enforced.
-- [ ] Correct refusal + escalation of every out-of-authority referral,
-      without stopping the rest of the run.
-- [ ] Runs from a clean clone using this README alone.
+      declined. — `output/trace.jsonl`, one JSON object per step.
+- [x] A **hard** approval gate on irreversible actions — code-enforced,
+      not prompt-enforced. — `ApprovalGate.apply_restricted_action()`
+      raises `ApprovalRequiredError` without a prior human-written record;
+      verified directly, including that approving one referral leaves a
+      different one still blocked.
+- [x] Correct refusal + escalation of every out-of-authority referral,
+      without stopping the rest of the run. — 4/12 escalate correctly
+      (including the one disguised as a safe request); a synthetic
+      history-fetch failure on one referral was confirmed not to affect
+      the other 11.
+- [x] Runs from a clean clone using this README alone. — tested by
+      copying the repo to a clean directory and running `run` /
+      `list-pending` / `approve` against it directly.
 
 ## Design principles carried through every module
 
