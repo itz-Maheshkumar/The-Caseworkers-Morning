@@ -9,7 +9,8 @@ control, used directly by hand, not through the AI.
 
 ## What was AI-assisted
 
-All source code in this repository —`tests/test_policy_engine.py` — plus
+All source code in this repository —`tests/test_policy_engine.py`
+`data/policy_rules.json`, `agent/*.py`, — plus 
 the drafting of `README.md`, `DECISIONS.md`,was written by Claude, one
 module at a time, at my direction. The process for each module: I asked
 for it by name (following the plan in README.md, then the amendment
@@ -28,9 +29,6 @@ escalation distinguishability design.
 
 ## What was written by hand
 
-
-- The files `data/policy_rules.json`, `agent/*.py`, was written by me with
-  claude's assitance.
 - Design decisions are done by me, made within the constraints the
   brief and the amendment set out, and explained in DECISIONS.md: the
   policy-as-data split, the two-layer approval gate, classifying on
