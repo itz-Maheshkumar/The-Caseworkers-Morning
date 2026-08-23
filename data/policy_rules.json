@@ -1,5 +1,6 @@
 {
   "policy_ref": "ACA-2026/1",
+  "amendments_applied": ["ACA-2026/2"],
   "source_document": "authority-policy.md",
   "note": "Machine-readable encoding of the authority policy. The agent (agent/policy_engine.py) reads THIS to decide what it may do on its own. If the policy changes, this file changes — the agent's classification code does not.",
 
@@ -74,5 +75,19 @@
     "review award", "review household composition", "record change of address",
     "draft explanatory note", "draft triage note", "flag for contact attempt",
     "record change", "review", "flag"
+  ],
+
+  "household_restrictions": [
+    {
+      "id": "3.9",
+      "label": "minor_in_household_no_draft",
+      "description": "Drafting a triage note is not permitted where the household includes a person under the age of 18. Unlike restricted_actions, this is evaluated from the resident's household composition, not from the referral's requested_action or summary text.",
+      "amendment_ref": "ACA-2026/2",
+      "age_threshold_years": 18,
+      "on_composition_unknown": "treat_as_applying",
+      "on_composition_unknown_reason": "Amendment ACA-2026/2, clause 5.2: where household composition cannot be established, 3.9 is to be treated as applying, in accordance with policy 6.1.",
+      "not_an_escalation": true,
+      "not_an_escalation_reason": "Amendment ACA-2026/2, clause 3.3: a hand-off under 3.2 is not an escalation under section 4 and must be distinguishable from one."
+    }
   ]
 }

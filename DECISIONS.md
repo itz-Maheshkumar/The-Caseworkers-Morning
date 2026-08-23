@@ -132,3 +132,88 @@ just adding a consumer of it.
 one item on this list that isn't optional. The whole point of Modules 1
 and 3 being split the way they are is that the day-two change should be
 absorbable without this file needing a new "what broke" section.
+
+## Amendment ACA-2026/2 — what changed, what didn't, and what I'd do differently
+
+The amendment's own `READ ME FIRST` asks for this entry explicitly, so
+this is written as an update, not folded silently into the sections
+above.
+
+**What changed.** One new fail-safe rule, clause 3.9: a household that
+includes anyone under 18 gets no triage note drafted at all — not "don't
+adopt it," "don't produce it." That's encoded as a new
+`household_restrictions` block in `data/policy_rules.json` (Module 10), a
+new `PolicyEngine.check_household_restriction()` method (Module 11), a new
+`triage.write_handoff()` output (Module 12) written to its own
+`output/handoffs/` directory, and `run_agent.py`'s `cmd_run()` gaining a
+third branch so the order per referral is now: classify on text →
+if `requires_approval`, escalate as before → if `autonomous`, check the
+household → `handoff_required` writes a hand-off, otherwise draft as
+before (Module 13). Checked against the real queue: RF-2026-0412 (age 5),
+RF-2026-0416 (age 3), and RF-2026-0418 (ages 12 and 0) are exactly the
+three referrals affected — confirmed by computing ages from
+`services/_history_data.json` against the referral batch date, not by
+guessing from the data pack's own hints.
+
+**What was deliberately left alone.** `PolicyEngine.classify()`'s
+signature, behavior, and all 14 of its Module 3/8 tests are untouched —
+`check_household_restriction()` is a second, independent method rather
+than a parameter added to `classify()`. `triage.draft_triage_note()` and
+`write_escalation()` are untouched in behavior (`write_escalation()`
+gained an optional `resident=None` default and a `record_type` field, but
+produces byte-for-byte the same content it did before for every referral
+that isn't affected by the amendment). No existing output directory or
+file format changed shape.
+
+**What I'd do differently with foreknowledge.** `classify()` would take
+the resident record as an input from the start — a single decision point
+returning one of `autonomous` / `requires_approval` / `handoff_required`,
+rather than two decision points a caller has to sequence correctly by
+hand. That would have made Module 11 unnecessary as a bolted-on second
+path and removed the risk (avoided here only by testing it directly) of
+`run_agent.py` checking the household restriction in the wrong order
+relative to the text classification, or forgetting to check it at all for
+one of the three outcomes. The reason it wasn't built that way from day
+one is that day one had no way to know a second, independent axis of
+restriction was coming — which is itself the point of Section 6's
+literal "day two" warning, and exactly the kind of code-shaped change
+`policy_rules.json`'s data-only design doesn't fully insulate against
+(see "Why the policy lives in data/policy_rules.json instead of in
+code," above: that section's design absorbed a *new rule*, 3.9, as a data
+edit just fine; what it didn't and couldn't absorb as a data edit was a
+new *kind* of input, resident data, into a function that was never
+built to take it).
+
+**Open interpretation call — the overlap case.** No referral in the
+current queue is both Section-3-restricted and has a minor in the
+household (verified directly: running `check_household_restriction()`
+against all four escalated referrals' resident records returns `clear`
+for all four), so this batch never actually exercises the question. The
+decision made anyway: escalation takes priority, and no separate
+hand-off record is produced for a referral that's already escalating —
+`run_agent.py`'s `requires_approval` branch returns before the household
+check ever runs. Rationale: an escalation already means no triage note
+gets drafted, which is the entire effect 3.9 requires; a redundant
+hand-off record would describe an action (drafting) that was never going
+to happen for a second, unrelated reason, and would leave a supervisor
+looking at two records for one referral without a stated rule for which
+one governs. The one piece of this recommendation not implemented:
+optionally noting "household includes a minor" as extra context inside
+the escalation record itself. Left out because there's no case in the
+current data to build or test it against, and adding an unexercised code
+path felt like a worse trade than documenting the gap here. If the
+organizers intended the overlap case to behave differently, this is
+exactly the kind of assumption the amendment's cover note invites asking
+about.
+
+**Open interpretation call — the age reference date.** `age_years()`
+(`agent/dates.py`) computes age relative to `REFERRAL_BATCH_DATE`
+(`2026-03-17`), not whichever date the code happens to run on, and both
+`triage.draft_triage_note()`'s age display and
+`check_household_restriction()`'s 3.9 check now share that one function
+and one constant. The amendment doesn't state a reference date outright;
+the decision made was to reuse the same convention `triage.py` already
+established for Module 6, on the reasoning that a person's age
+disagreeing between two places in the same run — one honest artifact of
+running the agent today, one artifact of reading a March referral — would
+be a worse failure mode than picking a convention and documenting it.
