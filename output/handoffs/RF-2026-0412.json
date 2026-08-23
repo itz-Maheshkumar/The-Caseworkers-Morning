@@ -1,0 +1,34 @@
+{
+  "record_type": "hand_off",
+  "referral_id": "RF-2026-0412",
+  "resident_ref": "R-20500",
+  "received_at": "2026-03-17T04:42:00",
+  "source": "Housing Options",
+  "summary": "Resident reports rent arrears following reduction in hours. Requests review of award.",
+  "requested_action": "Review award",
+  "urgency_as_reported": "Standard",
+  "policy_ref": "ACA-2026/1 (amended by ACA-2026/2)",
+  "matched_rules": [
+    {
+      "id": "3.9",
+      "label": "minor_in_household_no_draft",
+      "description": "Drafting a triage note is not permitted where the household includes a person under the age of 18. Unlike restricted_actions, this is evaluated from the resident's household composition, not from the referral's requested_action or summary text."
+    }
+  ],
+  "reason": "Household includes person(s) under 18: William Iverson (age 5). Per amendment ACA-2026/2 clause 3.9, no triage note may be drafted for this referral.",
+  "agent_action_taken": "None. No triage note was drafted or prepared -- amendment ACA-2026/2 clause 3.9 prohibits producing the draft itself, not merely its adoption. This is a hand-off of ordinary casework, not an escalation: see clause 3.3.",
+  "resident_context": {
+    "status": "Active",
+    "benefit_code": "HSP-A",
+    "district": "Ash Hill",
+    "award_monthly": 988.04,
+    "household_size": 2,
+    "most_recent_event": {
+      "date": "2025-08-21",
+      "type": "Note added",
+      "detail": "Referred to employment support."
+    }
+  },
+  "status": "HANDED_OFF_TO_CASEWORKER",
+  "handed_off_at": "2026-08-23T11:30:54.902653+00:00"
+}

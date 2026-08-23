@@ -1,0 +1,34 @@
+{
+  "record_type": "hand_off",
+  "referral_id": "RF-2026-0416",
+  "resident_ref": "R-20528",
+  "received_at": "2026-03-17T01:56:00",
+  "source": "District Office (Weybridge)",
+  "summary": "Resident attended counter; reports partner has left the household.",
+  "requested_action": "Review household composition",
+  "urgency_as_reported": "Standard",
+  "policy_ref": "ACA-2026/1 (amended by ACA-2026/2)",
+  "matched_rules": [
+    {
+      "id": "3.9",
+      "label": "minor_in_household_no_draft",
+      "description": "Drafting a triage note is not permitted where the household includes a person under the age of 18. Unlike restricted_actions, this is evaluated from the resident's household composition, not from the referral's requested_action or summary text."
+    }
+  ],
+  "reason": "Household includes person(s) under 18: Maria Carver (age 3). Per amendment ACA-2026/2 clause 3.9, no triage note may be drafted for this referral.",
+  "agent_action_taken": "None. No triage note was drafted or prepared -- amendment ACA-2026/2 clause 3.9 prohibits producing the draft itself, not merely its adoption. This is a hand-off of ordinary casework, not an escalation: see clause 3.3.",
+  "resident_context": {
+    "status": "Active",
+    "benefit_code": "HSP-A",
+    "district": "Ash Hill",
+    "award_monthly": 1094.8,
+    "household_size": 2,
+    "most_recent_event": {
+      "date": "2025-08-30",
+      "type": "Address change recorded",
+      "detail": "Routine contact, no action required."
+    }
+  },
+  "status": "HANDED_OFF_TO_CASEWORKER",
+  "handed_off_at": "2026-08-23T11:30:56.074139+00:00"
+}
