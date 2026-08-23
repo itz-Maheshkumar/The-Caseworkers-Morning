@@ -14,12 +14,11 @@ requested, is the hard part.
 
 ## Status
 
-Modules 1–7 built and tested — the floor is functionally met end to end
+Modules 1–8 built and tested — the floor is functionally met end to end
 (`run` → `list-pending` → `approve`, against the real mock API and the
-real 12-referral queue). Modules 8 (tests) and 9 (finish the docs) are
-what's left; everything below has been exercised by hand, not just
-written, but Module 8 is what turns those manual checks into something
-that stays true as the code changes.
+real 12-referral queue), and locked in by 14 automated tests covering the
+classifier and the approval gate. Module 9 (finish the docs) is what's
+left.
 
 ## The floor (what "done" means)
 
@@ -191,3 +190,13 @@ python3 agent/run_agent.py approve <referral_id> --by "<name>"
 ```
 
 Python 3, standard library only for now — no dependencies to install yet.
+
+## Running the tests
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+No mock service needed — the tests exercise `policy_engine.py` and
+`approval_gate.py` directly against the real `data/` files, not against a
+running server.
