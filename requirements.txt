@@ -1,0 +1,7 @@
+# Empty for now — the project currently uses only the Python standard
+# library (see README.md "Environment setup").
+#
+# Once a module needs a real dependency: install it with .venv active,
+# then run `pip freeze > requirements.txt` to lock it here so a clean
+# clone can reproduce the same environment with:
+#   pip install -r requirements.txt

@@ -1,0 +1,3 @@
+{
+  "_todo": "MODULE 1 — Policy-as-data. Encode authority-policy.md (ACA-2026/1) here as structured rules that policy_engine.py can load and apply. Nothing about the policy's content should live in Python — only how to apply whatever is in this file. Suggested shape: policy_ref, default_when_unclear (see policy 6.1), autonomous_actions (Section 2, ids 2.1-2.7), restricted_actions (Section 3, ids 3.1-3.8, each with a description and a list of trigger phrases to match against a referral's requested_action + summary), and a recognised_safe_actions list. See data/authority-policy.md for the source text."
+}

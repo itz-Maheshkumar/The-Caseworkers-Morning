@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+output/trace.jsonl
+output/triage_notes/*.txt
+output/escalations/*.json
+approvals/approvals.json
