@@ -10,7 +10,44 @@ of the policy._
 
 ## What the agent is structurally incapable of doing without a human, and how I know
 
-(Write once Modules 2 and 5 exist.)
+The agent cannot change a resident's award, eligibility, payment, or
+payment details, communicate with a resident or third party, disclose
+resident information externally, or record a finding about a resident's
+conduct — **on its own** — for two independent reasons. Either would hold
+even if the other failed.
+
+**1. There is no function in this codebase that performs any of those
+actions.** `agent/history_client.py` (Module 2) is the only thing this
+agent talks to, and it has exactly four methods —
+`get_resident`/`get_household`/`get_events`/`health` — all routed through
+one private `_get()` that only ever calls `urllib.request.urlopen` against
+a `GET`. `services/history_service.py` (given, unmodified) implements
+`do_GET` and nothing else — grep it for `do_POST`, `do_PUT`, or
+`do_DELETE` and there isn't one. There is no database connection, no other
+network call, no filesystem write to anything resembling a case record,
+anywhere under `agent/`. This isn't a policy the agent follows; it's the
+absence of a capability, the same way a process with no socket permissions
+can't exfiltrate data over the network regardless of what it's told.
+
+**2. Even the one function that stands in for "trigger a real mutation"
+refuses to run without prior human sign-off.** `agent/approval_gate.py`'s
+`apply_restricted_action()` calls `require_approval()` first, which raises
+`ApprovalRequiredError` unless a matching record already exists in
+`approvals/approvals.json` — and the only function that writes to that
+file, `record_approval()`, is called from nowhere in this repo except the
+`approve` CLI subcommand `run_agent.py` will expose (a human running a
+command), never from the agent's own decision loop. Verified directly, not
+just asserted in this doc: calling `apply_restricted_action()` against an
+unapproved referral raises every time; approving referral A leaves referral
+B still blocked; and a duplicate approval doesn't create a duplicate
+record. All three checks pass as of Module 5.
+
+Point 1 is the real guarantee — it holds even against a differently
+written agent loop, a bug, or a future contributor who forgets the gate
+exists. Point 2 exists because the floor asks for a *demonstrable* gate,
+not just an architectural argument, and because a real deployment (with a
+real, writable case-management system behind it) would need an explicit
+gate even where this mock setup doesn't strictly require one today.
 
 ## Why the policy lives in data/policy_rules.json instead of in code
 
