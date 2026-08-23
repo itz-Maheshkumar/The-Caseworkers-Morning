@@ -14,11 +14,15 @@ requested, is the hard part.
 
 ## Status
 
-Modules 1–8 built and tested — the floor is functionally met end to end
-(`run` → `list-pending` → `approve`, against the real mock API and the
-real 12-referral queue), and locked in by 14 automated tests covering the
-classifier and the approval gate. Module 9 (finish the docs) is what's
-left.
+All 9 modules built and tested. The floor is met end to end (`run` →
+`list-pending` → `approve`, against the real mock API and the real
+12-referral queue), locked in by 14 automated tests, and documented in
+DECISIONS.md / AI-USAGE.md. Still outstanding before submission: real
+incremental git commits (this was built and pushed in large steps, not
+committed as it went — see AI-USAGE.md), and your own read-through of
+everything before it ships, especially AI-USAGE.md's characterisation of
+the process and DECISIONS.md's reasoning, since both are yours to stand
+behind.
 
 ## The floor (what "done" means)
 

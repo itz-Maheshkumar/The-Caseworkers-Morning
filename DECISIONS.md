@@ -97,4 +97,38 @@ phrasing from silently sailing through as autonomous.
 
 ## What I'd do with more time
 
-(Optional, but worth having if the floor is met early.)
+**Replace exact-substring trigger matching with something more robust**
+(stemming, fuzzy matching, or a small classifier), while keeping the same
+contract: policy content stays in `policy_rules.json`, and anything below
+a confidence threshold still defaults to `requires_approval`. The current
+matching is deliberately simple and auditable — a supervisor can read
+`policy_rules.json` and know exactly why a referral was flagged — but it's
+also brittle to phrasing the trigger lists didn't anticipate. That
+brittleness is caught by the fail-safe default (Section 6.1), not
+eliminated by it, so a referral worded unusually enough to dodge both the
+restricted triggers *and* the recognised-safe patterns still escalates
+correctly — but a referral that happens to land inside a safe pattern by
+accident wouldn't. Widening `recognised_safe_actions` cautiously, or
+requiring a higher bar of specificity before something counts as "safe,"
+is the direction to push.
+
+**Persist run state so a crashed run can resume.** Right now a run that
+dies mid-queue (not from a single referral's history-fetch failure, which
+is already handled, but from something crashing `run_agent.py` itself —
+e.g. the mock service going down entirely) has to restart from referral
+one. The trace already records exactly what was done in what order; the
+missing piece is checking, on startup, which referral IDs already have a
+triage note or escalation record and skipping them.
+
+**A real notification path for `list-pending`.** Explicitly out of scope
+per the brief ("not required: a real approval workflow with notifications
+and accounts"), but the escalation record schema (`triage.py`'s
+`write_escalation`) was written with this in mind — every field a
+notifier would need (referral, resident context, matched rule, reason) is
+already there, so bolting one on wouldn't require changing the schema,
+just adding a consumer of it.
+
+**Handle the "day two" change when it lands**, obviously — this is the
+one item on this list that isn't optional. The whole point of Modules 1
+and 3 being split the way they are is that the day-two change should be
+absorbable without this file needing a new "what broke" section.
