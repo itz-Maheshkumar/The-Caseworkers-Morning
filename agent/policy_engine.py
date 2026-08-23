@@ -8,9 +8,20 @@ supervisor approval (Section 3).
 Nothing about the policy's content is hard-coded here. If ACA-2026/1 is
 revised (including the "day two" change mentioned in the brief), only
 data/policy_rules.json needs to change -- this file's logic does not.
+
+Amendment ACA-2026/2 (clause 3.9) added a second, independent kind of
+restriction: whether a household includes a minor. That's evaluated from
+resident data, not referral text, which is why it's a separate method,
+check_household_restriction(), rather than folded into classify(). The two
+are deliberately kept apart: classify()'s contract (referral in, Decision
+out, no resident data involved) is exactly what Modules 3 and 8 were built
+and tested against, and changing its signature would be exactly the kind
+of code-shaped change day two was warned might come.
 """
 import json
 import os
+
+from dates import age_years
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _RULES_PATH = os.path.join(_HERE, "..", "data", "policy_rules.json")
@@ -19,6 +30,8 @@ _RULES_PATH = os.path.join(_HERE, "..", "data", "policy_rules.json")
 class Decision:
     def __init__(self, status, matched_rules, reason):
         self.status = status                # "autonomous" | "requires_approval"
+                                             # (classify()) or "clear" | "handoff_required"
+                                             # (check_household_restriction())
         self.matched_rules = matched_rules  # list of rule dicts from policy_rules.json
         self.reason = reason                # human-readable -- goes into the trace
                                              # and into escalation records verbatim
@@ -87,4 +100,58 @@ class PolicyEngine:
             self.rules["default_when_unclear"],
             [],
             self.rules["default_reason"] + " (No recognised safe pattern matched either.)"
+        )
+
+    def check_household_restriction(self, resident):
+        """
+        Amendment ACA-2026/2, clause 3.9: drafting a triage note is not
+        permitted for a referral concerning a household that includes
+        anyone under 18. Evaluated purely from the resident's household
+        composition -- pass the dict HistoryClient.get_resident() returns,
+        or None if history could not be fetched at all.
+
+        Returns a Decision: status "handoff_required" (do not draft; hand
+        off instead -- see triage.write_handoff()) or "clear" (3.9 doesn't
+        apply; the caller may proceed to draft as normal).
+
+        Per clause 5.2, an unknown household composition (resident is None,
+        or has no household data) is treated as 3.9 applying -- the same
+        fail-safe shape as classify()'s default_when_unclear for 6.1.
+        """
+        household_rules = self.rules.get("household_restrictions", [])
+        if not household_rules:
+            # No such rule defined in policy_rules.json -- nothing to check.
+            return Decision("clear", [], "No household-based restrictions are defined.")
+
+        rule = household_rules[0]  # currently only 3.9
+
+        if resident is None or "household" not in resident:
+            return Decision(
+                "handoff_required",
+                [rule],
+                f"Household composition could not be established. Per "
+                f"{rule['on_composition_unknown_reason']}"
+            )
+
+        threshold = rule.get("age_threshold_years", 18)
+        minors = [
+            m for m in resident["household"]
+            if (a := age_years(m.get("date_of_birth", ""))) is not None and a < threshold
+        ]
+
+        if minors:
+            names = ", ".join(f"{m['name']} (age {age_years(m['date_of_birth'])})" for m in minors)
+            return Decision(
+                "handoff_required",
+                [rule],
+                f"Household includes person(s) under {threshold}: {names}. "
+                f"Per amendment {rule['amendment_ref']} clause {rule['id']}, no "
+                f"triage note may be drafted for this referral."
+            )
+
+        return Decision(
+            "clear",
+            [],
+            f"Household composition established; no member under {threshold}. "
+            f"Rule {rule['id']} does not apply."
         )

@@ -20,8 +20,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from policy_engine import PolicyEngine  # noqa: E402
 from approval_gate import ApprovalGate, ApprovalRequiredError  # noqa: E402
+import triage  # noqa: E402
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+SERVICES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "services")
 
 
 class TestPolicyEngineClassification(unittest.TestCase):
@@ -148,6 +150,209 @@ class TestApprovalGate(unittest.TestCase):
         self.assertFalse(self.gate.is_approved("RF-2026-0419"))
         self.gate.record_approval("RF-2026-0419", approved_by="Test Supervisor")
         self.assertTrue(self.gate.is_approved("RF-2026-0419"))
+
+
+class TestHouseholdRestriction(unittest.TestCase):
+    """Amendment ACA-2026/2, clause 3.9 -- tests policy_engine.py's
+    check_household_restriction() against the real resident history data
+    (services/_history_data.json), not synthetic fixtures. Loads that data
+    directly rather than going through HistoryClient, so these tests don't
+    need services/history_service.py running -- consistent with the rest
+    of this suite exercising real data files without a live server."""
+
+    # Computed by hand against REFERRAL_BATCH_DATE (2026-03-17) in dates.py:
+    # these are the only three residents in the data pack with a household
+    # member under 18 as of that date.
+    KNOWN_HANDOFF_REFERRALS = {"RF-2026-0412", "RF-2026-0416", "RF-2026-0418"}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.engine = PolicyEngine()
+        with open(os.path.join(DATA_DIR, "referral-queue.json"), encoding="utf-8") as f:
+            cls.referrals = json.load(f)
+        with open(os.path.join(SERVICES_DIR, "_history_data.json"), encoding="utf-8") as f:
+            cls.residents = json.load(f)
+        cls.by_id = {r["referral_id"]: r for r in cls.referrals}
+
+    def _resident_for(self, referral_id):
+        ref = self.by_id[referral_id]["resident_ref"]
+        return self.residents[ref]
+
+    def test_known_handoff_referrals_have_a_minor_in_household(self):
+        for rid in self.KNOWN_HANDOFF_REFERRALS:
+            resident = self._resident_for(rid)
+            d = self.engine.check_household_restriction(resident)
+            self.assertEqual(d.status, "handoff_required", msg=f"{rid} should require hand-off")
+            self.assertEqual([r["id"] for r in d.matched_rules], ["3.9"])
+
+    def test_household_without_a_minor_is_clear(self):
+        """RF-2026-0413's household (Module 1 fixture, unaffected by the
+        amendment) has no member under 18 -- 3.9 must not fire for it."""
+        resident = self._resident_for("RF-2026-0413")
+        d = self.engine.check_household_restriction(resident)
+        self.assertEqual(d.status, "clear")
+        self.assertEqual(d.matched_rules, [])
+
+    def test_full_queue_household_restriction_matches_known_three(self):
+        """Among the 8 referrals classify() already puts in "autonomous"
+        (Module 3's own split, re-derived here rather than hard-coded, so
+        this test breaks if either classify() or the household data
+        changes under it), exactly the three known referrals require a
+        hand-off under 3.9."""
+        autonomous_ids = {r["referral_id"] for r in self.referrals
+                           if self.engine.classify(r).status == "autonomous"}
+        handoff_ids = {rid for rid in autonomous_ids
+                       if self.engine.check_household_restriction(
+                           self._resident_for(rid)).status == "handoff_required"}
+        self.assertEqual(handoff_ids, self.KNOWN_HANDOFF_REFERRALS)
+
+    def test_resident_none_fails_safe_to_handoff(self):
+        """Clause 5.2: an unfetchable history is treated the same as 3.9
+        applying, not the same as 3.9 not applying."""
+        d = self.engine.check_household_restriction(None)
+        self.assertEqual(d.status, "handoff_required")
+        self.assertIn("could not be established", d.reason)
+
+    def test_resident_missing_household_key_fails_safe(self):
+        """A resident record that came back but happens to have no
+        "household" key is exactly as unknown as no resident at all --
+        must fail the same way, not be treated as an empty (=clear)
+        household."""
+        d = self.engine.check_household_restriction({"resident_ref": "R-99999"})
+        self.assertEqual(d.status, "handoff_required")
+
+    def test_empty_household_list_is_clear(self):
+        """Distinguish "we don't know the household" (fails safe to
+        hand-off) from "we know it, and it's empty" (no minors possible,
+        so clear) -- these are different facts and should get different
+        answers."""
+        d = self.engine.check_household_restriction({"resident_ref": "R-99999", "household": []})
+        self.assertEqual(d.status, "clear")
+
+
+class TestHandoffRecordsDistinguishability(unittest.TestCase):
+    """Amendment clause 3.3: a hand-off must be distinguishable from an
+    escalation, not just a relabelled copy of one. These tests exercise
+    triage.write_handoff() and triage.write_escalation() directly and
+    check the two outputs never collide."""
+
+    REFERRAL = {
+        "referral_id": "TEST-0001",
+        "resident_ref": "R-TEST",
+        "received_at": "2026-03-17T09:00:00",
+        "source": "Test Harness",
+        "summary": "Synthetic referral for a distinguishability test.",
+        "requested_action": "Review award",
+        "urgency": "Standard",
+    }
+    RESIDENT = {
+        "resident_ref": "R-TEST",
+        "status": "Active",
+        "benefit_code": "HSP-A",
+        "district": "Test District",
+        "award_monthly": 500.0,
+        "household": [{"name": "Junior Test", "date_of_birth": "2020-01-01", "relationship": "Son/daughter"}],
+        "events": [],
+    }
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.handoffs_dir = os.path.join(self.tmp.name, "handoffs")
+        self.escalations_dir = os.path.join(self.tmp.name, "escalations")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_handoff_record_shape(self):
+        engine = PolicyEngine()
+        decision = engine.check_household_restriction(self.RESIDENT)
+        self.assertEqual(decision.status, "handoff_required")
+
+        path = triage.write_handoff(self.REFERRAL, self.RESIDENT, decision, self.handoffs_dir)
+        with open(path, encoding="utf-8") as f:
+            record = json.load(f)
+
+        self.assertEqual(record["record_type"], "hand_off")
+        self.assertEqual(record["status"], "HANDED_OFF_TO_CASEWORKER")
+        self.assertIn("3.9", [r["id"] for r in record["matched_rules"]])
+
+    def test_handoff_and_escalation_never_share_record_type_or_status(self):
+        """The two record types must be tell-apart-able by field value
+        alone, not just by which directory they happened to land in."""
+        engine = PolicyEngine()
+        household_decision = engine.check_household_restriction(self.RESIDENT)
+        handoff_path = triage.write_handoff(self.REFERRAL, self.RESIDENT, household_decision, self.handoffs_dir)
+
+        classify_decision = engine.classify({**self.REFERRAL, "summary": "Suspend the award pending review."})
+        self.assertEqual(classify_decision.status, "requires_approval")
+        escalation_path = triage.write_escalation(self.REFERRAL, self.RESIDENT, classify_decision, self.escalations_dir)
+
+        with open(handoff_path, encoding="utf-8") as f:
+            handoff = json.load(f)
+        with open(escalation_path, encoding="utf-8") as f:
+            escalation = json.load(f)
+
+        self.assertNotEqual(handoff["record_type"], escalation["record_type"])
+        self.assertNotEqual(handoff["status"], escalation["status"])
+        # And they must not have landed in the same place either --
+        # belt-and-braces on top of the field-level distinction.
+        self.assertNotEqual(os.path.dirname(handoff_path), os.path.dirname(escalation_path))
+
+    def test_handoff_never_mentions_note_being_drafted(self):
+        """The agent_action_taken field is meant for a human reading the
+        record without other context -- it must say plainly that nothing
+        was drafted, not just that nothing was "adopted"."""
+        engine = PolicyEngine()
+        decision = engine.check_household_restriction(self.RESIDENT)
+        path = triage.write_handoff(self.REFERRAL, self.RESIDENT, decision, self.handoffs_dir)
+        with open(path, encoding="utf-8") as f:
+            record = json.load(f)
+        self.assertIn("No triage note was drafted", record["agent_action_taken"])
+
+
+class TestAmendmentIntegration(unittest.TestCase):
+    """Runs the real per-referral branch logic (classify -> household
+    check -> draft/handoff) against the real queue and real resident data
+    for the three known-affected referrals, without needing
+    history_service.py running -- proving end to end that no triage note
+    is ever produced for them, matching the live `run` test performed
+    manually for Module 13."""
+
+    KNOWN_HANDOFF_REFERRALS = {"RF-2026-0412", "RF-2026-0416", "RF-2026-0418"}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.engine = PolicyEngine()
+        with open(os.path.join(DATA_DIR, "referral-queue.json"), encoding="utf-8") as f:
+            cls.referrals = json.load(f)
+        with open(os.path.join(SERVICES_DIR, "_history_data.json"), encoding="utf-8") as f:
+            cls.residents = json.load(f)
+        cls.by_id = {r["referral_id"]: r for r in cls.referrals}
+
+    def test_no_triage_note_file_for_known_handoff_referrals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            notes_dir = os.path.join(tmp, "triage_notes")
+            handoffs_dir = os.path.join(tmp, "handoffs")
+
+            for rid in self.KNOWN_HANDOFF_REFERRALS:
+                referral = self.by_id[rid]
+                resident = self.residents[referral["resident_ref"]]
+
+                decision = self.engine.classify(referral)
+                self.assertEqual(decision.status, "autonomous",
+                                  msg=f"{rid} is expected to be autonomous before the household check")
+
+                household_decision = self.engine.check_household_restriction(resident)
+                self.assertEqual(household_decision.status, "handoff_required")
+                triage.write_handoff(referral, resident, household_decision, handoffs_dir)
+                # Deliberately do NOT call draft_triage_note() here -- this
+                # mirrors run_agent.cmd_run()'s branch, which gates on
+                # household_decision.status before ever reaching it.
+
+            note_files = os.listdir(notes_dir) if os.path.isdir(notes_dir) else []
+            handoff_files = os.listdir(handoffs_dir) if os.path.isdir(handoffs_dir) else []
+            self.assertEqual(note_files, [], msg="No triage note should exist for any hand-off referral")
+            self.assertEqual(len(handoff_files), len(self.KNOWN_HANDOFF_REFERRALS))
 
 
 if __name__ == "__main__":

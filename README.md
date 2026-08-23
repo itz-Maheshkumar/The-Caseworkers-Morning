@@ -14,21 +14,37 @@ requested, is the hard part.
 
 ## Status
 
-All 9 modules built and tested. The floor is met end to end (`run` →
-`list-pending` → `approve`, against the real mock API and the real
-12-referral queue), locked in by 14 automated tests, and documented in
-DECISIONS.md / AI-USAGE.md. Still outstanding before submission: real
-incremental git commits (this was built and pushed in large steps, not
-committed as it went — see AI-USAGE.md), and your own read-through of
-everything before it ships, especially AI-USAGE.md's characterisation of
-the process and DECISIONS.md's reasoning, since both are yours to stand
-behind.
+All 15 modules built and tested — the original 9 plus Modules 10-15
+implementing Amendment ACA-2026/2 (Day 2's surprise policy change). The
+floor is met end to end (`run` → `list-pending` → `approve`, against the
+real mock API and the real 12-referral queue) and so is the amendment:
+`run` now also produces `list-handoffs`, gated by clause 3.9 rather than
+by approval, and correctly hands off exactly the three affected referrals
+(RF-2026-0412, 0416, 0418) instead of drafting for them. All of this is
+locked in by 24 automated tests (14 original + 10 for the amendment) and
+documented in DECISIONS.md / AI-USAGE.md, including the two open
+interpretation calls the amendment itself doesn't settle (see
+DECISIONS.md's amendment section). Built and committed one module per
+feature branch and PR (`feat-policy-as-data`, `feat-history-client`,
+`feat-policy-engine`, `feat-trace`, `feat-approval-gate`,
+`feat-triage-escalation-drafting`, `feat-orchestrator-cli`,
+`test-specs-tests-files`, and now `feat-new-policy-rules` for the
+amendment), each merged into `main` as its module landed. Still
+outstanding before submission: filling in `AI-USAGE.md` (currently still
+the blank template — tools used, what was AI-assisted vs. written by
+hand, and the unmodified-problem-pack confirmations), and your own
+read-through of everything before it ships, especially AI-USAGE.md's
+characterisation of the process and DECISIONS.md's reasoning, since both
+are yours to stand behind.
 
 ## The floor (what "done" means)
 
 - [x] A three-step agent run that completes for every referral it's
-      permitted to handle. — `run` processes all 12 referrals: 8 drafted,
-      4 escalated.
+      permitted to handle. — `run` processes all 12 referrals. Originally
+      (Module 9): 8 drafted, 4 escalated. As of Amendment ACA-2026/2
+      (Module 13): 5 drafted, 4 escalated, 3 handed off — the 3 that move
+      from "drafted" to "handed off" are exactly the ones with a minor in
+      the household (clause 3.9); the 4 escalations are unaffected.
 - [x] A visible execution trace — a supervisor can reconstruct, after the
       fact, what was done, in what order, on what basis, and what was
       declined. — `output/trace.jsonl`, one JSON object per step.
@@ -80,24 +96,27 @@ The-Caseworkers-Morning/
 │   └── _history_data.json          — given: the data it serves
 ├── agent/
 │   ├── history_client.py           — MODULE 2: client for the history API
-│   ├── policy_engine.py            — MODULE 3: classify referral -> autonomous | requires_approval
+│   ├── policy_engine.py            — MODULE 3 + 11: classify() -> autonomous | requires_approval;
+│   │                                   check_household_restriction() -> clear | handoff_required (Amendment)
 │   ├── trace.py                    — MODULE 4: execution trace (policy 5.1/5.2)
 │   ├── approval_gate.py            — MODULE 5: the hard approval gate
-│   ├── triage.py                   — MODULE 6: draft notes + escalation records
-│   └── run_agent.py                — MODULE 7: CLI / orchestrator, ties 1-6 together
+│   ├── dates.py                    — MODULE 10/11: shared age_years() helper (Amendment)
+│   ├── triage.py                   — MODULE 6 + 12: draft notes, escalation records, hand-off records
+│   └── run_agent.py                — MODULE 7 + 13: CLI / orchestrator, three-way branch
 ├── tests/
-│   └── test_policy_engine.py       — MODULE 8: verification
+│   └── test_policy_engine.py       — MODULE 8 + 14: verification (24 tests)
 ├── approvals/                      — approvals.json lands here at runtime
 └── output/
     ├── trace.jsonl                 — generated at runtime
     ├── triage_notes/                — generated at runtime
-    └── escalations/                 — generated at runtime
+    ├── escalations/                 — generated at runtime
+    └── handoffs/                    — MODULE 12: generated at runtime (Amendment)
 ```
 
 Files marked "given" are the unmodified problem pack — data and fixtures,
-not something to edit. Everything under `agent/` is a stub right now: each
-one has a docstring laying out its contract (inputs, outputs, which policy
-clause it's responsible for) and a `# TODO`.
+not something to edit. Everything under `agent/` and `tests/` is fully
+built and tested (Modules 1-15); each file's docstring still doubles as
+its contract (inputs, outputs, which policy clause it's responsible for).
 
 ## Development plan — module by module
 
@@ -189,7 +208,8 @@ on_composition_unknown: "treat_as_applying"}]`, the last field encoding
 amendment 5.2's fail-safe (household composition unknown → treat 3.9 as
 applying) the same way `default_when_unclear` already encodes 6.1's.
 Done when: nothing about age 18, or what to do when composition is
-unknown, exists anywhere outside this file.
+unknown, exists anywhere outside this file. **Done** — `household_restrictions`
+is the only place `18` or `on_composition_unknown` appears in `data/`.
 
 **Module 11 — Household-composition check** (`agent/policy_engine.py`)
 A new function — not a change to `classify()`'s existing signature, to
@@ -200,7 +220,9 @@ matched rule `3.9`, reason naming which household member triggered it)
 so downstream code doesn't need a second decision shape to handle. Done
 when: it correctly flags all three known cases (0412, 0416, 0418), leaves
 the other 9 unflagged, and returns "applies" (not "unknown") when handed
-`None`.
+`None`. **Done** — all three confirmed individually and via a full-queue
+test (`test_full_queue_household_restriction_matches_known_three`);
+`classify()`'s 14 pre-existing tests still pass unchanged.
 
 **Module 12 — The hand-off output type** (`agent/triage.py`)
 A third function, `write_handoff()`, alongside the existing
@@ -213,6 +235,10 @@ the caseworker doesn't repeat work (3.2/4.2), with a status string
 (`output/handoffs/`) rather than reusing `output/escalations/` — physical
 separation is the simplest way to make "distinguishable from an
 escalation" (3.3) not rely on someone reading a status field carefully.
+**Done** — `write_handoff()` shares `_resident_context()` with
+`write_escalation()` but writes `record_type: "hand_off"` /
+`status: "HANDED_OFF_TO_CASEWORKER"` to its own directory; no note text
+is generated anywhere in the function.
 
 **Module 13 — Orchestrator: three-way branch + the fetch-failure fail-safe**
 (`agent/run_agent.py`)
@@ -237,7 +263,12 @@ rather than folded into one listing, again for 3.3's distinguishability.
 Done when: `run` against the real queue produces exactly 3 hand-offs (plus
 the existing 4 escalations and 5 remaining autonomous drafts), and a
 synthetic fetch failure on an otherwise-autonomous referral produces a
-hand-off instead of silently disappearing.
+hand-off instead of silently disappearing. **Done** — live run against the
+real queue: 5 autonomous / 4 escalated / 3 handed off, exactly RF-2026-0412/
+0416/0418. A run pointed at an unreachable history URL turns all 12
+referrals into 4 escalated + 8 handed off + 0 autonomous — 0 silently
+dropped, matching clause 5.2. `list-handoffs` lists all three by referral
+ID, matched rule, and reason.
 
 **Module 14 — Tests for the amendment** (`tests/`)
 Cover: each of the three known 3.9 cases produces a hand-off and *no*
@@ -246,6 +277,14 @@ failure on an otherwise-autonomous referral produces a hand-off citing 5.2
 rather than just incrementing a `failed` counter; a hand-off record and an
 escalation record are structurally distinguishable (different `status`
 value, different directory) by assertion, not just by inspection.
+**Done** — 10 new tests in `tests/test_policy_engine.py` (24 total, all
+passing), covering the three known cases, a clear case, `resident=None`
+and missing/empty household fail-safes, the full-queue split, handoff/
+escalation field- and directory-level distinguishability, and an
+integration test asserting zero `.txt` files exist for the three affected
+referrals. Verified not vacuous: deliberately broke
+`check_household_restriction()` and confirmed 4 tests failed before
+reverting.
 
 **Module 15 — The required `DECISIONS.md` entry**
 The amendment's own `READ ME FIRST` asks for this explicitly: what
@@ -254,7 +293,9 @@ differently with foreknowledge (the honest answer is probably that
 `classify()` would have taken the resident record from the start, rather
 than Module 11 needing to exist as a bolted-on second decision path).
 Also where the "open interpretation calls" below get written down as
-decisions, not left implicit.
+decisions, not left implicit. **Done** — see the "Amendment ACA-2026/2 —
+what changed, what didn't, and what I'd do differently" section of
+`DECISIONS.md`.
 
 ### Open interpretation calls (worth deciding deliberately, not by accident)
 
@@ -312,6 +353,7 @@ python3 services/history_service.py --port 8083
 # terminal 2
 python3 agent/run_agent.py run
 python3 agent/run_agent.py list-pending
+python3 agent/run_agent.py list-handoffs
 python3 agent/run_agent.py approve <referral_id> --by "<name>"
 ```
 
